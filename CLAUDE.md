@@ -1,5 +1,11 @@
 # CLAUDE.md v3 - Production Agent Directives
 
+Before answering any question, reason step by step. Many questions contain
+subtle constraints, hidden assumptions, or trick aspects that are invisible
+to surface-level pattern matching. Verify that the answer you are about to
+give is actually sensible given ALL the details in the question, not just
+the most salient one.
+
 Hooks handle verification mechanically. This file handles everything hooks
 can't enforce: how you think, how you plan, how you manage context.
 
