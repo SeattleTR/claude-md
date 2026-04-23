@@ -1,14 +1,17 @@
 #!/bin/bash
 # stop-verify.sh
 # Runs when Claude tries to finish a task (Stop event).
-# This is the "employee-grade verification" - the agent cannot declare
-# "Done!" until the project actually compiles, lints, and passes tests.
+# The agent cannot declare "Done!" until the project actually compiles,
+# lints, and passes tests.
 #
-# If verification fails, exit 2 blocks the stop and sends errors back
-# to Claude so it can fix them before completing.
+# Hook output contract (Claude Code):
+#   exit 0 + JSON on stdout → Claude reads the structured decision.
+#   We use {decision:"block", reason:...} on stdout with exit 0.
 #
-# The stop_hook_active field prevents infinite loops: when Claude retries
-# after fixing errors, the system sets this to true so we let it through.
+# Infinite-loop guard: `stop_hook_active` is set to true when Claude
+# retries after a block. We honor it so retries don't loop forever.
+# (Caveat: a retry can pass without actually re-running verification —
+# Phase 2 addresses this with a failure-hash strategy.)
 
 INPUT=$(cat)
 
@@ -93,13 +96,14 @@ fi
 
 # --- Report ---
 if [ -n "$ERRORS" ]; then
-  SUMMARY="Verification failed ($CHECKS_RUN checks ran). Fix these errors before completing:\n\n${ERRORS}"
-  echo "{\"decision\": \"block\", \"reason\": \"${SUMMARY}\"}"
-  exit 2
+  SUMMARY=$(printf 'Verification failed (%d checks ran). Fix these errors before completing:\n\n%b' \
+    "$CHECKS_RUN" "$ERRORS")
+  jq -n --arg r "$SUMMARY" '{decision: "block", reason: $r}'
+  exit 0
 fi
 
 if [ $CHECKS_RUN -eq 0 ]; then
-  echo "{\"additionalContext\": \"No type-checker, linter, or test suite detected. Task completion is unverified. State this to the user.\"}"
+  jq -n '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: "No type-checker, linter, or test suite detected. Task completion is unverified. State this to the user."}}'
   exit 0
 fi
 

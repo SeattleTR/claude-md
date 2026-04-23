@@ -19,19 +19,13 @@ TOOL_RESPONSE=$(echo "$INPUT" | jq -r '
 # Check for the persisted-output truncation marker
 if echo "$TOOL_RESPONSE" | grep -q "Output too large"; then
   # Warn but don't block - the tool already ran, blocking won't undo it
-  echo "{\"additionalContext\": \"WARNING: Tool output was truncated to a 2KB preview. The full output was saved to disk. Read the full file at the given path before acting on these results, or re-run with narrower scope (single directory, stricter pattern).\"}"
+  MSG="WARNING: Tool output was truncated to a 2KB preview. The full output was saved to disk. Read the full file at the given path before acting on these results, or re-run with narrower scope (single directory, stricter pattern)."
+  jq -n --arg m "$MSG" '{hookSpecificOutput: {hookEventName: "PostToolUse", additionalContext: $m}}'
   exit 0
 fi
 
-# Heuristic: if grep returned very few results for a broad pattern, warn
-if [ "$TOOL_NAME" = "Grep" ]; then
-  RESULT_COUNT=$(echo "$TOOL_RESPONSE" | grep -c "^" 2>/dev/null || echo "0")
-  PATTERN=$(echo "$INPUT" | jq -r '.tool_input.pattern // empty')
-
-  if [ "$RESULT_COUNT" -lt 5 ] && [ -n "$PATTERN" ]; then
-    echo "{\"additionalContext\": \"Low result count (${RESULT_COUNT}) for pattern '${PATTERN}'. If this seems too few, results may have been truncated. Consider re-running with narrower directory scope.\"}"
-    exit 0
-  fi
-fi
+# Note: previous versions warned on low Grep result counts as "possibly
+# truncated". That was backwards — truncation happens from TOO MUCH output.
+# Precise searches returning 0–4 hits are legitimate and common. Removed.
 
 exit 0

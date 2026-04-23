@@ -1,12 +1,14 @@
 # Archimedes Agent Directives
 
-Production-grade directives for autonomous coding agents. Works with Claude
+Cross-agent directives for autonomous coding agents. Works with Claude
 Code, Codex, Cursor, Windsurf, Aider, and any agent that reads a rules
 file.
 
-Hooks (where available) mechanically enforce what can be checked. These
-directives handle what requires judgment: planning, context management,
-code quality, and self-correction.
+Some checks are enforced by hooks (see `.claude/hooks/` for Claude Code
+and `.githooks/pre-commit` as a universal fallback). Most of this file is
+guidance that depends on the agent reading and following it — treat it
+that way. The README has a per-check table showing which are hard
+blocks, which are advisory nudges, and which are fallbacks.
 
 ---
 
@@ -21,7 +23,7 @@ We prioritize correctness, modularity, and readability over speed.
 
 ---
 
-## 2. Persistent State — The 4-File Memory System
+## 2. Persistent State — The 5-File Memory System
 
 Chat history is not memory. On every session start, read these files. As
 you work, update them. Never let them drift from reality.
@@ -69,8 +71,8 @@ turn, then halt for verification.
 - Never batch multi-file refactors in a single response.
 - Max 5 files per phase. Complete, verify, get approval, continue.
 - For >5 independent files: launch parallel sub-agents (5-8 files each).
-  Each gets its own ~167K context. Sequential processing of 20 files
-  guarantees context decay by file 12.
+  Each gets its own fresh context window. Long sequential passes burn
+  cache and drift.
 
 ---
 
@@ -124,8 +126,9 @@ Text checks are table stakes. Before claiming a task complete:
 - **Tactile** — actually execute it. Check logs. If it's a script, run
   it. If it's an endpoint, curl it. "It should work" is not validation.
 - **Visual** — for UI changes: build, render, screenshot via Playwright,
-  submit to a Vision-Language Model for review. `sensory-validation.sh`
-  enforces this when UI files are touched.
+  submit to a Vision-Language Model for review. `sensory-reminder.sh`
+  (Claude Code) nudges you to do this when UI files are touched; it
+  does not itself run the screenshot or the VLM review.
 - **Self-grading is forbidden.** The model that wrote the code is biased
   toward declaring it correct. Independent verifier required — a sub-agent,
   a test suite, or the human.
@@ -209,13 +212,16 @@ different filenames — the installer creates copies for each:
 | Windsurf | `.windsurfrules` | No |
 | Aider | `CONVENTIONS.md` | No |
 
-For agents without native hooks, `.githooks/pre-commit` provides the same
-mechanical enforcement on every `git commit`. Activate with:
+For agents without native hooks, `.githooks/pre-commit` is a fallback
+that runs on every `git commit`. It is NOT active by default — enable
+with:
 
 ```
 git config core.hooksPath .githooks
 ```
 
-The universal hook blocks commits unless the project's type-checker,
-linters, and test suite pass, and `memory/progress.md` was updated when
-source files changed.
+Once active, the hook blocks commits when the project's detected
+type-checker, linter, or test suite fails, or when `memory/progress.md`
+was not staged alongside source changes. What counts as "detected" is
+best-effort heuristics (presence of `tsconfig.json`, lockfiles, etc.).
+Phase 2 introduces `agent-md.toml` for explicit commands.

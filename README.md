@@ -1,8 +1,10 @@
 # agent-md
 
-**Archimedes Agent Directives** — production-grade directives and hooks for autonomous coding agents. Cross-stack: Claude Code, Codex, Cursor, Windsurf, Aider.
+**Archimedes Agent Directives** — cross-agent directives, hooks, and state layout for autonomous coding agents. Works with Claude Code, Codex, Cursor, Windsurf, Aider.
 
 Formerly `claude-md` (v1–v3). Now multi-agent and memory-aware.
+
+Honest scope: the markdown directives are advisory (the agent has to read and follow them). Only the Claude Code hooks and the optional `.githooks/pre-commit` actually block anything — see the enforcement table below.
 
 ## Quickstart
 
@@ -13,10 +15,10 @@ curl -sL https://raw.githubusercontent.com/iamfakeguru/agent-md/main/install.sh 
 
 You get:
 - `AGENT.md` + per-agent aliases (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `CONVENTIONS.md`)
-- `.claude/hooks/` — 7 Claude Code hooks (lint, type-check, tests, state, sensory, TDD, destructive-command block)
-- `memory/` — 4-file persistent state system (`agents.md`, `plan.md`, `progress.md`, `verify.md`, `gotchas.md`)
+- `.claude/hooks/` — 7 Claude Code hooks (lint, type-check, tests, state, sensory reminder, TDD nudge, destructive-command block)
+- `memory/` — 5-file persistent state system (`agents.md`, `plan.md`, `progress.md`, `verify.md`, `gotchas.md`)
 - `skills/` — progressive tool disclosure (agent queries instead of loading all schemas)
-- `.githooks/pre-commit` — universal enforcement that works for any agent or bare git
+- `.githooks/pre-commit` — optional git-hook fallback for any agent (disabled until you enable it)
 
 ## The Problem
 
@@ -32,11 +34,11 @@ Coding agents have structural failure modes that compound into hours of lost wor
 
 ## The Fix — Three Layers
 
-**Markdown directives** (`AGENT.md`) handle judgment: planning discipline, TDD, multisensory validation, the CRISPY pipeline, the 2.1 step rule. Every supported agent reads the same source of truth.
+**Markdown directives** (`AGENT.md`) carry judgment-heavy guidance: planning discipline, TDD, multisensory validation, the CRISPY pipeline, the 2.1 step rule. Every supported agent reads the same source of truth. Advisory — depends on the agent following what it read.
 
-**Hooks** (`.claude/hooks/`) mechanically enforce verification in Claude Code. For non-Claude agents, `.githooks/pre-commit` is the universal fallback — runs on every `git commit` regardless of which agent wrote the code.
+**Hooks** (`.claude/hooks/`) are where real enforcement lives — for Claude Code. They can block Stop, emit block decisions after edits, and deny destructive Bash calls pre-execution. For non-Claude agents there is an optional `.githooks/pre-commit` that runs on `git commit` — it is installed but NOT active by default (enable with `git config core.hooksPath .githooks`).
 
-**Persistent state** (`memory/`) is the 4-file memory system. Agents read `agents.md`, `plan.md`, `progress.md`, `verify.md` at session start and update them as work progresses. Chat history isn't memory.
+**Persistent state** (`memory/`) is a 5-file layout. Agents read `agents.md`, `plan.md`, `progress.md`, `verify.md`, `gotchas.md` at session start and update them as work progresses. Chat history isn't memory.
 
 ## What's Inside
 
@@ -51,13 +53,13 @@ your-project/
   .claude/
     settings.json
     hooks/
-      post-edit-verify.sh       # lint after every file write
-      stop-verify.sh            # type-check + lint + tests at task end
+      post-edit-verify.sh       # lint after every file write (block decision)
+      stop-verify.sh            # type-check + lint + tests at task end (block)
       state-enforcement.sh      # block Stop unless memory/progress.md updated
-      sensory-validation.sh     # require visual check for UI changes
-      tdd-check.sh              # warn on new exports without tests
+      sensory-reminder.sh       # nudge agent to do visual check on UI diffs
+      tdd-check.sh              # soft warn on new exports without tests
       truncation-check.sh       # detect truncated tool output
-      block-destructive.sh      # block rm -rf, DROP TABLE, .env reads, force push
+      block-destructive.sh      # deny rm -rf, DROP TABLE, .env reads, force push
   memory/
     agents.md            # sub-agents, MCPs, tech stack
     plan.md              # macro design (vertical slices)
@@ -68,8 +70,23 @@ your-project/
     discover_tools.sh    # query skills on-demand (no schema bloat)
     playwright-capture.sh    # headless screenshot for visual validation
   .githooks/
-    pre-commit           # universal enforcement for any agent + bare git
+    pre-commit           # optional fallback — enable with core.hooksPath
 ```
+
+## Enforcement — What actually blocks
+
+| Check | Claude Code | Codex / Cursor / Windsurf / Aider | Note |
+|---|---|---|---|
+| Lint after edit | **Hard** (`post-edit-verify.sh`) | Fallback via `pre-commit` (opt-in) | Per-file eslint/ruff |
+| Type-check + lint + tests at Stop | **Hard** (`stop-verify.sh`) | Fallback via `pre-commit` (opt-in) | Uses heuristic tool detection |
+| `progress.md` stays current | **Hard** (`state-enforcement.sh`) | Fallback via `pre-commit` (opt-in) | Staged diff check |
+| Destructive Bash blocked | **Hard** (`block-destructive.sh`) | Not covered | Regex seatbelt, not a security boundary |
+| UI → visual validation | **Advisory** (`sensory-reminder.sh`) | Advisory via `AGENT.md` | Injects reminder, does not run Playwright/VLM itself |
+| New export → matching test | **Advisory** (`tdd-check.sh`) | Advisory via `AGENT.md` | Grep-based nudge |
+| Tool-output truncation | **Advisory** (`truncation-check.sh`) | Not covered | Looks for "Output too large" marker |
+| Planning / CRISPY / 2.1 / memory reads | Advisory (`AGENT.md`) | Advisory (`AGENT.md`) | Depends on agent following the file |
+
+"Hard" = the hook can block the agent or commit. "Advisory" = it only injects a reminder the agent may still ignore. "Fallback" = runs on `git commit` if the user ran `git config core.hooksPath .githooks`.
 
 ## Install Options
 
@@ -96,10 +113,10 @@ Required: `jq` (Claude Code hook JSON parsing), `git`, and your language's toolc
 | Lint errors accumulate across edits | hooks | `post-edit-verify` runs lint per file write |
 | `rm -rf`, `DROP TABLE`, `.env` exfil | hooks | `block-destructive` denies before execution |
 | Grep finds 3 results; there are 47 | hooks | `truncation-check` warns when output was cut |
-| No memory between sessions | memory/ | 4-file state system read/written each session |
+| No memory between sessions | memory/ | 5-file state system read/written each session |
 | Completion without progress update | hooks + .githooks | `state-enforcement` blocks Stop unless `progress.md` changed |
-| UI bugs that pass type-check | hooks | `sensory-validation` requires screenshot review for UI diffs |
-| Implementation without a test | hooks | `tdd-check` flags new exports without matching tests |
+| UI bugs that pass type-check | hooks | `sensory-reminder` nudges agent to screenshot + VLM review |
+| Implementation without a test | hooks | `tdd-check` soft-warns on new exports without matching tests |
 | Tool schema bloat | skills/ | `discover_tools` queries skills on-demand |
 | Band-aid fixes | AGENT.md | Senior dev override directive |
 | Context decay on large refactors | AGENT.md | Sub-agent swarming directive |
@@ -113,11 +130,13 @@ Required: `jq` (Claude Code hook JSON parsing), `git`, and your language's toolc
 | Agent | Reads | Native hooks? | Fallback |
 |---|---|---|---|
 | Claude Code | `CLAUDE.md` | Yes — `.claude/hooks/` | — |
-| Codex (OpenAI) | `AGENTS.md` | No | `.githooks/pre-commit` |
-| Cursor | `.cursorrules` | No | `.githooks/pre-commit` |
-| Windsurf | `.windsurfrules` | No | `.githooks/pre-commit` |
-| Aider | `CONVENTIONS.md` | No | `.githooks/pre-commit` |
-| Any other | `AGENT.md` (if configured) | No | `.githooks/pre-commit` |
+| Codex (OpenAI) | `AGENTS.md` | No | `.githooks/pre-commit` (opt-in) |
+| Cursor | `.cursorrules` | No | `.githooks/pre-commit` (opt-in) |
+| Windsurf | `.windsurfrules` | No | `.githooks/pre-commit` (opt-in) |
+| Aider | `CONVENTIONS.md` | No | `.githooks/pre-commit` (opt-in) |
+| Any other | `AGENT.md` (if configured) | No | `.githooks/pre-commit` (opt-in) |
+
+Aliases are plain copies of `AGENT.md`, not symlinks (Windows-safe). If you edit one, re-run `./install.sh` to re-sync the others — or edit `AGENT.md` and re-run.
 
 ## Migrating from `claude-md` v3
 
@@ -135,7 +154,7 @@ Hooks are **physics** — inescapable, mechanical, unbypassable under context pr
 
 Markdown is **topography** — the terrain the agent navigates. It carries intent, strategy, and taste. It can be forgotten under context pressure, but the 4-file memory system provides a persistent surface that survives compaction.
 
-**Rule of thumb:** if an instruction can be forgotten or rationalized away, it belongs in a hook. Everything else goes in markdown.
+**Rule of thumb:** if an instruction can be forgotten or rationalized away, it belongs in a hook. Everything else goes in markdown. If it's in markdown, call it advisory — don't dress it up as enforcement.
 
 ## What This Doesn't Fix
 

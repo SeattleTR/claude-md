@@ -1,10 +1,13 @@
 #!/bin/bash
 # state-enforcement.sh
 # Stop hook: blocks task completion if source files changed but
-# memory/progress.md was NOT updated. Enforces the 4-file memory system.
+# memory/progress.md was NOT updated. Part of the memory system.
 #
 # Skipped if memory/progress.md doesn't exist (memory system not installed)
 # or if we're not in a git repo. Infinite-loop guarded via stop_hook_active.
+#
+# Hook output contract: exit 0 + JSON block decision on stdout. Earlier
+# versions mixed JSON with exit 2, which Claude silently discarded.
 
 INPUT=$(cat)
 
@@ -37,8 +40,8 @@ PROGRESS_CHANGED=${PROGRESS_CHANGED:-0}
 
 if [ "$PROGRESS_CHANGED" -eq 0 ]; then
   REASON="State enforcement: ${SOURCE_CHANGED} source file(s) modified but memory/progress.md was not updated. Update progress.md to reflect completed atomic tasks before finishing, or state explicitly why this work did not require progress tracking."
-  echo "{\"decision\": \"block\", \"reason\": \"${REASON}\"}"
-  exit 2
+  jq -n --arg r "$REASON" '{decision: "block", reason: $r}'
+  exit 0
 fi
 
 exit 0

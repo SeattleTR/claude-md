@@ -1,15 +1,17 @@
 #!/bin/bash
 # post-edit-verify.sh
-# Runs after every Write/Edit/MultiEdit. Blocks the agent from proceeding
-# if lint fails on the modified file. Type-checking runs only at Stop
-# (via stop-verify.sh) to avoid 10-30s tsc delays on every single edit.
+# Runs after every Write/Edit/MultiEdit. Surfaces lint failures so the
+# agent sees them immediately. Type-checking runs only at Stop (via
+# stop-verify.sh) to avoid 10-30s tsc delays on every single edit.
 #
-# How it works:
-# - Reads the tool event JSON from stdin
-# - Extracts the file path that was just modified
-# - Runs eslint (JS/TS) or ruff (Python) on the specific file
-# - If lint fails, returns exit 2 with a block decision + the error output
-# - The agent sees the errors and must fix them before continuing
+# Hook output contract (Claude Code):
+#   exit 0 + JSON on stdout  → Claude reads the structured decision.
+#   exit 2 + text on stderr  → Claude reads the stderr.
+# We pick ONE — exit 0 with JSON — so the JSON isn't silently discarded.
+#
+# Note: this is a PostToolUse hook, so the edit already landed on disk.
+# The "block" decision here stops Claude from progressing until the
+# lint errors are addressed; it does not unwind the write.
 
 INPUT=$(cat)
 
@@ -52,11 +54,13 @@ if echo "$FILE_PATH" | grep -qE '\.py$'; then
   fi
 fi
 
-# If errors found, block and report
+# If errors found, emit a block decision as valid JSON (jq handles escaping)
 if [ -n "$ERRORS" ]; then
-  TRUNCATED=$(echo -e "$ERRORS" | head -50)
-  echo "{\"decision\": \"block\", \"reason\": \"Lint failed. Fix before continuing:\n${TRUNCATED}\"}"
-  exit 2
+  TRUNCATED=$(printf '%b' "$ERRORS" | head -50)
+  REASON="Lint failed. Fix before continuing:
+${TRUNCATED}"
+  jq -n --arg r "$REASON" '{decision: "block", reason: $r}'
+  exit 0
 fi
 
 exit 0

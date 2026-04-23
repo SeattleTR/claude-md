@@ -47,9 +47,9 @@
           },
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/sensory-validation.sh",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/sensory-reminder.sh",
             "timeout": 10,
-            "statusMessage": "Checking visual validation..."
+            "statusMessage": "Visual-check reminder..."
           }
         ]
       }
