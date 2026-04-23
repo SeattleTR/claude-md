@@ -29,6 +29,9 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
+# Note: the regex patterns below use single quotes intentionally.
+# shellcheck disable=SC2016
+
 # Block recursive deletion of root, home, or parent directory
 if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|(-[a-zA-Z]*\s+)*)(\/|~|\$HOME|\.\.)'; then
   deny "Blocked destructive rm command targeting root, home, or parent directory. If intentional, run manually."
@@ -54,8 +57,10 @@ if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force|git\s+push\s+-f\b|git\s+re
   deny "Blocked force push or hard reset. If intentional, run manually."
 fi
 
-# Block .env file reads (credential exposure)
-if echo "$COMMAND" | grep -qE '(cat|less|head|tail|more|source|grep|sed|awk|bat)\s+\.env\b|echo.*\$\(.*\.env'; then
+# Block .env file reads (credential exposure).
+# Match `.env` as a standalone token — NOT `.env.example`, `.environment`, etc.
+# After `.env` we require end-of-string, whitespace, or a shell metachar.
+if echo "$COMMAND" | grep -qE '(cat|less|head|tail|more|source|grep|sed|awk|bat)\s+\.env([[:space:];&|>]|$)|echo.*\$\(.*\.env([[:space:];&|>]|$)'; then
   deny "Blocked .env file access. Credentials should not be read by the agent."
 fi
 

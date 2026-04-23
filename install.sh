@@ -182,7 +182,7 @@ if echo " $AGENT_LIST " | grep -q " claude "; then
       cp "$H" "$TARGET/.claude/hooks/$(basename "$H")"
     done
     chmod +x "$TARGET/.claude/hooks/"*.sh
-    HOOK_COUNT=$(ls "$TARGET/.claude/hooks/"*.sh 2>/dev/null | wc -l | tr -d ' ')
+    HOOK_COUNT=$(find "$TARGET/.claude/hooks" -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
     echo "  ✓ .claude/hooks/   (${HOOK_COUNT} hooks)"
   else
     echo "  → would write     .claude/hooks/*.sh"

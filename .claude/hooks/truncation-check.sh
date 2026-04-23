@@ -6,8 +6,6 @@
 
 INPUT=$(cat)
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-
 # Extract tool_response as string - handles both string and object responses
 TOOL_RESPONSE=$(echo "$INPUT" | jq -r '
   if (.tool_response | type) == "string" then .tool_response

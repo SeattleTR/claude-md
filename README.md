@@ -162,6 +162,17 @@ Markdown is **topography** — the terrain the agent navigates. It carries inten
 - **Provider-specific quirks** — Codex, Cursor, etc. have their own context windows and compaction heuristics. Directives are cross-stack; enforcement quality varies.
 - **Model taste** — models still lack judgment in edge cases. That's why the human reviews the 200-line spec, not the 5,000-line PR.
 
+## Development
+
+Run the test suite:
+
+```bash
+bats tests/
+shellcheck .claude/hooks/*.sh skills/*.sh .githooks/pre-commit install.sh
+```
+
+CI (GitHub Actions) runs both plus an installer smoke test on every push.
+
 ## License
 
 MIT.

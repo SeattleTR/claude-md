@@ -80,14 +80,14 @@ fi
 # --- Lint ---
 if [ -n "$CFG_LINT" ]; then
   run_check "$CFG_LINT" "$CFG_LINT"
-elif ls .eslintrc* eslint.config.* 2>/dev/null | grep -q .; then
+elif compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
   run_check "eslint" "npx eslint . --quiet"
 fi
 
 # --- Python ruff (when no explicit lint override) ---
 if [ -z "$CFG_LINT" ] && command -v ruff &>/dev/null; then
   HAS_PY=$(git diff --cached --name-only | grep -c '\.py$' || true)
-  if [ "${HAS_PY:-0}" -gt 0 ] || ls *.py 2>/dev/null | head -1 | grep -q .; then
+  if [ "${HAS_PY:-0}" -gt 0 ] || compgen -G "*.py" > /dev/null; then
     run_check "ruff" "ruff check ."
   fi
 fi

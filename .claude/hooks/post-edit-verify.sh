@@ -16,6 +16,7 @@
 #   agent-md.toml [verify] lint_file = "npx eslint --quiet {file}"
 #   {file} is substituted with the edited file path.
 
+# shellcheck source=.claude/hooks/_lib.sh
 . "$(dirname "$0")/_lib.sh"
 
 INPUT=$(cat)
@@ -48,7 +49,7 @@ ${OUT}"
 else
   # Heuristic fallback
   if echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx)$' \
-     && ls .eslintrc* eslint.config.* 2>/dev/null | grep -q .; then
+     && { compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; }; then
     OUT=$(npx eslint --quiet "$FILE_PATH" 2>&1)
     # shellcheck disable=SC2181
     if [ $? -ne 0 ]; then

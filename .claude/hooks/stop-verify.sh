@@ -19,6 +19,7 @@
 # Configuration:
 #   agent-md.toml [verify] typecheck / lint / test override heuristics.
 
+# shellcheck source=.claude/hooks/_lib.sh
 . "$(dirname "$0")/_lib.sh"
 
 INPUT=$(cat)
@@ -62,10 +63,10 @@ fi
 if [ -n "$CFG_LINT" ]; then
   run_check "LINT ($CFG_LINT)" "$CFG_LINT"
 else
-  if ls .eslintrc* eslint.config.* 2>/dev/null | grep -q .; then
+  if compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
     run_check "ESLINT" "npx eslint . --quiet"
   fi
-  if command -v ruff &>/dev/null && [ -n "$(ls *.py 2>/dev/null)" ]; then
+  if command -v ruff &>/dev/null && compgen -G "*.py" > /dev/null; then
     run_check "RUFF" "ruff check ."
   fi
 fi

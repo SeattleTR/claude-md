@@ -19,6 +19,7 @@
 # The reminder mode is what shipped in v4 Phase 1. The blocking mode is
 # new in Phase 2 and opt-in; it earns the "sensory validation" label.
 
+# shellcheck source=.claude/hooks/_lib.sh
 . "$(dirname "$0")/_lib.sh"
 
 INPUT=$(cat)
