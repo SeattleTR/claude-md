@@ -6,28 +6,30 @@
 #
 # Hook output contract (Claude Code):
 #   exit 0 + JSON on stdout → Claude reads the structured decision.
-#   We use {decision:"block", reason:...} on stdout with exit 0.
+#   We emit {decision:"block", reason:...} on stdout with exit 0.
 #
-# Retry behavior:
-#   Claude sets stop_hook_active=true on the retry after a block. We
-#   still RE-RUN verification on retries — the old version short-
-#   circuited, which let the agent declare "Done!" without actually
-#   fixing anything. To avoid trapping the agent forever, we break out
-#   after 3 consecutive failing retries (counter at
-#   .agent/state/stop-verify-retries) with an advisory message.
+# Design choice — no retry release:
+#   Earlier versions broke out after N consecutive failing retries to
+#   avoid trapping the agent in a loop. That escape hatch meant
+#   "enforcement" was conditional on the agent's persistence — not
+#   enforcement at all. We keep blocking until the commands actually
+#   pass. `stop_hook_active=true` does NOT short-circuit us; if the
+#   agent retries without fixing anything, we block again.
+#
+#   The only way out is to fix the failing command — or delete the
+#   offending entry in agent-md.toml [verify] and accept an unverified
+#   Stop.
 #
 # Configuration:
 #   agent-md.toml [verify] typecheck / lint / test override heuristics.
+#   Package-manager detection for `test` is shared with .githooks/pre-commit
+#   via npm_test_cmd() in _lib.sh so the two never disagree.
 
 # shellcheck source=.claude/hooks/_lib.sh
 . "$(dirname "$0")/_lib.sh"
 
-INPUT=$(cat)
-STOP_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
-
-STATE_DIR=".agent/state"
-RETRY_FILE="$STATE_DIR/stop-verify-retries"
-mkdir -p "$STATE_DIR" 2>/dev/null
+# Read and discard stdin — Claude sends JSON but we don't branch on it.
+cat > /dev/null
 
 TOML=$(toml_path)
 CFG_TYPECHECK=$(read_toml "$TOML" verify typecheck)
@@ -64,14 +66,14 @@ if [ -n "$CFG_LINT" ]; then
   run_check "LINT ($CFG_LINT)" "$CFG_LINT"
 else
   if compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
-    run_check "ESLINT" "npx eslint . --quiet"
+    run_check "ESLINT" "npx eslint ."
   fi
   if command -v ruff &>/dev/null && compgen -G "*.py" > /dev/null; then
     run_check "RUFF" "ruff check ."
   fi
 fi
 
-# --- Python mypy (still heuristic — not covered by a single CFG slot) ---
+# --- Python mypy (heuristic, not covered by a single CFG slot) ---
 if [ -z "$CFG_TYPECHECK" ] && command -v mypy &>/dev/null \
    && { [ -f "mypy.ini" ] || grep -q '\[tool.mypy\]' pyproject.toml 2>/dev/null; }; then
   run_check "MYPY" "mypy ."
@@ -85,43 +87,24 @@ fi
 # --- Tests ---
 if [ -n "$CFG_TEST" ]; then
   run_check "TESTS ($CFG_TEST)" "$CFG_TEST"
-elif [ -f "package.json" ]; then
-  HAS_TEST=$(jq -r '.scripts.test // empty' package.json 2>/dev/null)
-  if [ -n "$HAS_TEST" ] && [ "$HAS_TEST" != "echo \"Error: no test specified\" && exit 1" ]; then
-    run_check "NPM TEST" "npm test --silent"
+else
+  NPM_TEST=$(npm_test_cmd)
+  if [ -n "$NPM_TEST" ] && has_npm_test_script; then
+    run_check "NPM TEST" "$NPM_TEST"
+  elif { [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; } && command -v pytest &>/dev/null; then
+    run_check "PYTEST" "pytest --tb=short -q"
+  elif [ -f "Cargo.toml" ]; then
+    run_check "CARGO TEST" "cargo test"
   fi
-elif { [ -f "pytest.ini" ] || [ -f "pyproject.toml" ]; } && command -v pytest &>/dev/null; then
-  run_check "PYTEST" "pytest --tb=short -q"
-elif [ -f "Cargo.toml" ]; then
-  run_check "CARGO TEST" "cargo test"
 fi
 
 # --- Report ---
 if [ -n "$ERRORS" ]; then
-  COUNT=1
-  if [ -f "$RETRY_FILE" ]; then COUNT=$(( $(cat "$RETRY_FILE") + 1 )); fi
-  echo "$COUNT" > "$RETRY_FILE"
-
-  if [ "$COUNT" -ge 3 ] && [ "$STOP_ACTIVE" = "true" ]; then
-    # Loop-break: emit advisory, let the Stop through, clear counter.
-    rm -f "$RETRY_FILE"
-    MSG="stop-verify: 3 consecutive failed retries. Releasing the Stop to avoid an infinite loop. The last error was:
-
-$ERRORS
-
-The failing verification command still needs to be fixed. Tell the user."
-    jq -n --arg m "$MSG" '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: $m}}'
-    exit 0
-  fi
-
   SUMMARY=$(printf 'Verification failed (%d checks ran). Fix these errors before completing:\n\n%s' \
     "$CHECKS_RUN" "$ERRORS")
   jq -n --arg r "$SUMMARY" '{decision: "block", reason: $r}'
   exit 0
 fi
-
-# Clean pass: clear retry counter.
-rm -f "$RETRY_FILE"
 
 if [ "$CHECKS_RUN" -eq 0 ]; then
   jq -n '{hookSpecificOutput: {hookEventName: "Stop", additionalContext: "No type-checker, linter, or test suite detected. Task completion is unverified. State this to the user, or add an agent-md.toml to declare verification commands."}}'

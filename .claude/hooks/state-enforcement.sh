@@ -3,18 +3,18 @@
 # Stop hook: blocks task completion if source files changed but
 # memory/progress.md was NOT updated. Part of the memory system.
 #
-# Skipped if memory/progress.md doesn't exist (memory system not installed)
-# or if we're not in a git repo. Infinite-loop guarded via stop_hook_active.
+# Skipped if memory/progress.md doesn't exist (memory system not
+# installed) or if we're not in a git repo.
+#
+# No stop_hook_active bypass. A retry does not make a missing progress
+# update disappear. The only way out is to stage/commit progress.md,
+# or to delete memory/progress.md and opt out of the memory layer.
 #
 # Hook output contract: exit 0 + JSON block decision on stdout. Earlier
 # versions mixed JSON with exit 2, which Claude silently discarded.
 
-INPUT=$(cat)
-
-STOP_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false')
-if [ "$STOP_ACTIVE" = "true" ]; then
-  exit 0
-fi
+# Read and discard stdin.
+cat > /dev/null
 
 [ -f "memory/progress.md" ] || exit 0
 git rev-parse --is-inside-work-tree &>/dev/null || exit 0
@@ -28,9 +28,11 @@ MODIFIED_FILES=$(
   } | sort -u
 )
 
+# Exclusions: tooling, docs, agent scratch state (.agent/), and the
+# directive-alias files that the installer copies from AGENT.md.
 SOURCE_CHANGED=$(
   echo "$MODIFIED_FILES" \
-    | grep -vE '^(memory/|docs/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$)' \
+    | grep -vE '^(memory/|docs/|\.agent/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$|agent-md\.toml(\.example)?$)' \
     | grep -v '^$' \
     | grep -cvE '\.md$'
 )

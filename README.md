@@ -112,7 +112,7 @@ Required: `jq` (Claude Code hook JSON parsing), `git`, and your language's toolc
 | "Done" with 40 type errors | hooks + .githooks | `stop-verify` / `pre-commit` blocks completion until tsc/eslint/tests pass |
 | Lint errors accumulate across edits | hooks | `post-edit-verify` runs lint per file write |
 | `rm -rf`, `DROP TABLE`, `.env` exfil | hooks | `block-destructive` denies before execution |
-| Grep finds 3 results; there are 47 | hooks | `truncation-check` warns when output was cut |
+| Silent tool-output truncation | hooks | `truncation-check` emits advisory when Claude's output-too-large marker appears |
 | No memory between sessions | memory/ | 5-file state system read/written each session |
 | Completion without progress update | hooks + .githooks | `state-enforcement` blocks Stop unless `progress.md` changed |
 | UI bugs that pass type-check | hooks | `sensory-reminder` nudges agent to screenshot + VLM review |
@@ -130,11 +130,13 @@ Required: `jq` (Claude Code hook JSON parsing), `git`, and your language's toolc
 | Agent | Reads | Native hooks? | Fallback |
 |---|---|---|---|
 | Claude Code | `CLAUDE.md` | Yes — `.claude/hooks/` | — |
-| Codex (OpenAI) | `AGENTS.md` | No | `.githooks/pre-commit` (opt-in) |
+| Codex (OpenAI) | `AGENTS.md` | Experimental — not installed by this repo | `.githooks/pre-commit` (opt-in) |
 | Cursor | `.cursorrules` | No | `.githooks/pre-commit` (opt-in) |
 | Windsurf | `.windsurfrules` | No | `.githooks/pre-commit` (opt-in) |
 | Aider | `CONVENTIONS.md` | No | `.githooks/pre-commit` (opt-in) |
 | Any other | `AGENT.md` (if configured) | No | `.githooks/pre-commit` (opt-in) |
+
+Codex has gained experimental native hooks recently, but this repo does not yet install a Codex-native hook bundle — it wires the directives file (`AGENTS.md`) and relies on the git fallback. If/when you want native Codex skills, they live at `.agents/skills/<name>/SKILL.md`. The `skills/` directory in this repo is plain shell scripts for progressive tool disclosure, not Codex-native skill packages.
 
 Aliases are plain copies of `AGENT.md`, not symlinks (Windows-safe). If you edit one, re-run `./install.sh` to re-sync the others — or edit `AGENT.md` and re-run.
 
@@ -148,13 +150,13 @@ Your existing setup remains compatible:
 
 Re-run `./install.sh` to pick up v4 features.
 
-## Philosophy — The Physics / Topography Split
+## Philosophy — Contracts, not doctrine
 
-Hooks are **physics** — inescapable, mechanical, unbypassable under context pressure. They enforce what can be mechanically checked: did it compile, lint, pass tests, did `progress.md` get updated, was a screenshot taken.
+Hooks are closer to physics than prompts: they create deterministic friction outside the model. They're still scoped to the tool, the event, and the bypass rules of the environment — Claude Code hooks can only observe Claude Code's tool calls, and `git commit --no-verify` will sail past the pre-commit hook. What they give you is an artifact-based contract: the commands either exited zero or they didn't.
 
-Markdown is **topography** — the terrain the agent navigates. It carries intent, strategy, and taste. It can be forgotten under context pressure, but the 4-file memory system provides a persistent surface that survives compaction.
+Markdown is terrain the agent navigates. It carries intent, strategy, and taste. Under context pressure it can be forgotten or rationalized away. The 5-file memory system (`agents.md` / `plan.md` / `progress.md` / `verify.md` / `gotchas.md`) is a persistent surface the agent re-reads on session start so some of that terrain survives compaction.
 
-**Rule of thumb:** if an instruction can be forgotten or rationalized away, it belongs in a hook. Everything else goes in markdown. If it's in markdown, call it advisory — don't dress it up as enforcement.
+**Rule of thumb:** if an instruction can be forgotten or rationalized away, try to turn it into a checked artifact (a hook, a committed file, a required evidence note). Everything else goes in markdown — and if it's in markdown, call it advisory. Less doctrine, more contracts.
 
 ## What This Doesn't Fix
 

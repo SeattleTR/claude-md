@@ -11,23 +11,45 @@
 # typecheck = "npx tsc --noEmit"
 
 # Project-wide lint command. Runs at Stop and at pre-commit.
-# lint = "npx eslint . --quiet"
+# lint = "npx eslint ."
 
 # Per-file lint used by post-edit-verify (fast, runs after every Write/Edit).
 # The string {file} is substituted with the edited file path.
-# lint_file = "npx eslint --quiet {file}"
+# lint_file = "npx eslint {file}"
 
 # Test suite. Runs at Stop and at pre-commit.
-# test = "npm test --silent"
+# When unset, both hooks detect the package manager via lockfile
+# (pnpm > yarn > bun > npm) and run the detected `<pm> test`. Because
+# both hooks share the same detector in .claude/hooks/_lib.sh, they
+# cannot disagree.
+# test = "pnpm test --silent"
 
 [visual]
-# When true, sensory-reminder.sh becomes a BLOCKING hook:
-# Stop is blocked unless a fresh artifact exists in artifacts_dir
-# (modified within freshness_seconds) for every UI file that changed.
+# When true, sensory-reminder.sh becomes a BLOCKING hook.
+#
+# It is NOT enough to drop a screenshot into artifacts_dir. The hook
+# requires STRUCTURED evidence:
+#
+#   1. A markdown file under artifacts_dir modified within
+#      freshness_seconds.
+#   2. An image (.png/.jpg/.jpeg/.webp/.gif) under artifacts_dir,
+#      also modified within freshness_seconds.
+#   3. The markdown file must reference the image by filename
+#      (literal substring match, e.g. `home-after.png`).
+#
+# Recommended contents for the markdown note:
+#   - changed files (paths)
+#   - route / URL captured
+#   - viewport (e.g. 1440x900)
+#   - artifact path (the image filename)
+#   - observed result — what you verified, in prose
+#
+# A screenshot alone is a photo of something. The prose is the claim.
 # required = false
 
-# Where visual evidence artifacts live. Screenshot + markdown note.
+# Where visual evidence artifacts live.
 # artifacts_dir = ".agent/visual"
 
 # Max age of an artifact (seconds) before it's considered stale.
+# Applies to both the markdown note and the image it references.
 # freshness_seconds = 3600

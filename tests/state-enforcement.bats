@@ -49,14 +49,22 @@ teardown() { teardown_repo; }
   [ -z "$out" ]
 }
 
-@test "honors stop_hook_active" {
+@test "still blocks on stop_hook_active — no retry escape" {
   echo "export const x = 1" > src.ts
   out=$(run_hook state-enforcement.sh '{"stop_hook_active":true}')
-  [ -z "$out" ]
+  echo "$out" | jq -e '.decision == "block"' > /dev/null
 }
 
 @test "ignores markdown-only changes" {
   echo "# doc" > NOTES.md
+  out=$(run_hook state-enforcement.sh '{"stop_hook_active":false}')
+  [ -z "$out" ]
+}
+
+@test "ignores .agent/ scratch state" {
+  mkdir -p .agent/state
+  echo "1" > .agent/state/stop-verify-retries
+  echo "note" > .agent/visual/home.png 2>/dev/null || mkdir -p .agent/visual && echo "img" > .agent/visual/home.png
   out=$(run_hook state-enforcement.sh '{"stop_hook_active":false}')
   [ -z "$out" ]
 }

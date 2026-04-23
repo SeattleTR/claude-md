@@ -30,7 +30,7 @@ EOF
   echo "$out" | jq -e '.decision == "block"' > /dev/null
 }
 
-@test "passes when required=true and fresh artifact exists" {
+@test "blocks when required=true and only an image exists (no markdown)" {
   cat > agent-md.toml <<EOF
 [visual]
 required = true
@@ -40,15 +40,51 @@ EOF
   echo "<div/>" > App.tsx
   mkdir -p .agent/visual
   touch .agent/visual/home.png
+  # A screenshot alone is a photo, not a verification — must still block.
   out=$(run_hook sensory-reminder.sh '{"stop_hook_active":false}')
-  # Should emit an advisory, not a block
-  echo "$out" | jq -e '.hookSpecificOutput.additionalContext' > /dev/null
-  run sh -c "echo '$out' | jq -e '.decision // empty'"
-  [ -z "$output" ] || [ "$output" = '""' ]
+  echo "$out" | jq -e '.decision == "block"' > /dev/null
 }
 
-@test "honors stop_hook_active" {
+@test "blocks when markdown exists but doesn't reference the image" {
+  cat > agent-md.toml <<EOF
+[visual]
+required = true
+artifacts_dir = ".agent/visual"
+freshness_seconds = 3600
+EOF
+  echo "<div/>" > App.tsx
+  mkdir -p .agent/visual
+  touch .agent/visual/home.png
+  cat > .agent/visual/note.md <<'EOF'
+# Visual check
+Some prose that does NOT name the image file.
+EOF
+  out=$(run_hook sensory-reminder.sh '{"stop_hook_active":false}')
+  echo "$out" | jq -e '.decision == "block"' > /dev/null
+}
+
+@test "passes when markdown references the fresh image" {
+  cat > agent-md.toml <<EOF
+[visual]
+required = true
+artifacts_dir = ".agent/visual"
+freshness_seconds = 3600
+EOF
+  echo "<div/>" > App.tsx
+  mkdir -p .agent/visual
+  touch .agent/visual/home.png
+  cat > .agent/visual/note.md <<'EOF'
+# Visual check
+Route: /home, viewport 1440x900. Artifact: home.png. Result: looks correct.
+EOF
+  out=$(run_hook sensory-reminder.sh '{"stop_hook_active":false}')
+  echo "$out" | jq -e '.hookSpecificOutput.additionalContext' > /dev/null
+  # Must not be a block
+  echo "$out" | jq -e 'has("decision") | not' > /dev/null
+}
+
+@test "still runs when stop_hook_active=true — no retry escape" {
   echo "<div/>" > App.tsx
   out=$(run_hook sensory-reminder.sh '{"stop_hook_active":true}')
-  [ -z "$out" ]
+  echo "$out" | jq -e '.hookSpecificOutput.additionalContext' > /dev/null
 }

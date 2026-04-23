@@ -137,9 +137,14 @@ Text checks are table stakes. Before claiming a task complete:
 - **Tactile** — actually execute it. Check logs. If it's a script, run
   it. If it's an endpoint, curl it. "It should work" is not validation.
 - **Visual** — for UI changes: build, render, screenshot via Playwright,
-  submit to a Vision-Language Model for review. `sensory-reminder.sh`
-  (Claude Code) nudges you to do this when UI files are touched; it
-  does not itself run the screenshot or the VLM review.
+  submit to a Vision-Language Model for review. Capture this as
+  STRUCTURED evidence: a markdown note next to the image that records
+  changed files, route, viewport, artifact path, and observed result.
+  A lone screenshot is a photo of something — the prose is the
+  verification claim. `sensory-reminder.sh` (Claude Code) nudges you
+  to do this when UI files are touched; with `[visual] required = true`
+  in `agent-md.toml` it becomes a hard block that demands the
+  markdown+image pairing.
 - **Self-grading is forbidden.** The model that wrote the code is biased
   toward declaring it correct. Independent verifier required — a sub-agent,
   a test suite, or the human.
@@ -182,9 +187,11 @@ Don't bloat context by loading every tool schema. For specialized tasks:
   `memory/progress.md` so forks can pick up cleanly.
 - File reads cap at 2,000 lines. For files over 500 LOC: use offset and
   limit to read in chunks.
-- Tool results over 50K chars get truncated to a 2KB preview with a path
-  to the full output. If results look suspiciously small: read the full
-  file, or re-run with narrower scope.
+- Tool results over 50K chars get truncated. Claude Code emits a marker
+  ("Output too large" or similar) when it happens; the
+  `truncation-check.sh` hook forwards that marker as advisory context.
+  If you see it, re-run with narrower scope (single directory, stricter
+  glob, head/tail bounds) — don't reason from the truncated preview.
 
 ---
 
@@ -218,10 +225,15 @@ different filenames — the installer creates copies for each:
 | Agent | Reads | Native hooks? |
 |---|---|---|
 | Claude Code | `CLAUDE.md` | Yes — `.claude/hooks/` |
-| Codex (OpenAI) | `AGENTS.md` | No |
+| Codex (OpenAI) | `AGENTS.md` | Experimental — this repo does NOT install native Codex hooks |
 | Cursor | `.cursorrules` | No |
 | Windsurf | `.windsurfrules` | No |
 | Aider | `CONVENTIONS.md` | No |
+
+If you want native Codex skills they live at `.agents/skills/<name>/SKILL.md`
+(Codex's own format). The `skills/` directory in this repo is generic
+shell helpers for progressive tool disclosure and is not a Codex
+skill package.
 
 For agents without native hooks, `.githooks/pre-commit` is a fallback
 that runs on every `git commit`. It is NOT active by default — enable

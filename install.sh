@@ -9,6 +9,9 @@
 #   ./install.sh --no-githooks /path/to/project     # skip git-hooks fallback
 #   ./install.sh --dry-run .                        # show what would change
 #   ./install.sh --no-overwrite .                   # never replace existing files
+#   ./install.sh --claude-settings=skip .           # default: don't touch existing .claude/settings.json
+#   ./install.sh --claude-settings=replace .        # back up + overwrite
+#   ./install.sh --claude-settings=merge .          # merge hook entries into existing settings.json (jq)
 #
 # Or via curl (from inside your project dir):
 #   curl -sL https://raw.githubusercontent.com/iamfakeguru/agent-md/main/install.sh | bash
@@ -19,9 +22,14 @@
 #   --agent=all
 #   --no-overwrite OFF — we WILL replace AGENT.md etc., but always back
 #     up the old copy to *.bak first.
+#   --claude-settings=skip — existing .claude/settings.json is left
+#     alone. Users with handcrafted hook wiring don't get clobbered.
+#     Pass --claude-settings=merge to splice our hooks in, or
+#     --claude-settings=replace to back up and overwrite.
 #   memory/ files are never overwritten (user state).
 #   .githooks/pre-commit is installed but NOT activated on curl|bash.
 #     You get a printed command to activate it manually.
+#   .agent/state/ is auto-added to .gitignore (hook scratch, not source).
 
 set -e
 
@@ -30,6 +38,7 @@ TARGET=""
 GITHOOKS="ask"
 DRY_RUN=0
 NO_OVERWRITE=0
+CLAUDE_SETTINGS="skip"
 
 for ARG in "$@"; do
   case $ARG in
@@ -38,13 +47,19 @@ for ARG in "$@"; do
     --no-githooks) GITHOOKS="no" ;;
     --dry-run)     DRY_RUN=1 ;;
     --no-overwrite) NO_OVERWRITE=1 ;;
+    --claude-settings=*) CLAUDE_SETTINGS="${ARG#*=}" ;;
     --help|-h)
-      sed -n '2,25p' "$0"; exit 0 ;;
+      sed -n '2,30p' "$0"; exit 0 ;;
     *)
       [ -z "$TARGET" ] && TARGET="$ARG"
       ;;
   esac
 done
+
+case "$CLAUDE_SETTINGS" in
+  skip|replace|merge) ;;
+  *) echo "Error: --claude-settings must be skip|replace|merge (got '$CLAUDE_SETTINGS')"; exit 1 ;;
+esac
 
 TARGET="${TARGET:-.}"
 
@@ -175,7 +190,74 @@ done
 # --- Claude Code hooks ---
 if echo " $AGENT_LIST " | grep -q " claude "; then
   [ "$DRY_RUN" -eq 0 ] && mkdir -p "$TARGET/.claude/hooks"
-  copy_file "$SCRIPT_DIR/.claude/settings.json" "$TARGET/.claude/settings.json" ".claude/settings.json"
+
+  # settings.json handling is explicit — people hand-wire hooks and we
+  # must not silently clobber them. Default is skip.
+  SETTINGS_SRC="$SCRIPT_DIR/.claude/settings.json"
+  SETTINGS_DST="$TARGET/.claude/settings.json"
+  if [ -f "$SETTINGS_SRC" ]; then
+    if [ ! -f "$SETTINGS_DST" ]; then
+      # No existing settings — always copy.
+      if [ "$DRY_RUN" -eq 1 ]; then
+        echo "  → would write     .claude/settings.json"
+      else
+        cp "$SETTINGS_SRC" "$SETTINGS_DST"
+        echo "  ✓ .claude/settings.json"
+      fi
+    else
+      case "$CLAUDE_SETTINGS" in
+        skip)
+          echo "  · .claude/settings.json exists — not touched (--claude-settings=merge|replace to change)"
+          ;;
+        replace)
+          if [ "$DRY_RUN" -eq 1 ]; then
+            echo "  → would back up + replace .claude/settings.json"
+          else
+            backup_if_exists "$SETTINGS_DST"
+            cp "$SETTINGS_SRC" "$SETTINGS_DST"
+            echo "  ✓ .claude/settings.json (replaced, backup kept)"
+          fi
+          ;;
+        merge)
+          if ! command -v jq &>/dev/null; then
+            echo "  ! jq required for --claude-settings=merge — skipping settings.json"
+          elif [ "$DRY_RUN" -eq 1 ]; then
+            echo "  → would merge     .claude/settings.json (hooks block only)"
+          else
+            # Capture the original BEFORE backup (which moves the file away).
+            TMP_ORIG=$(mktemp)
+            cp "$SETTINGS_DST" "$TMP_ORIG"
+            backup_if_exists "$SETTINGS_DST"
+            TMP_MERGED=$(mktemp)
+            # Merge semantics:
+            #   - top-level keys: union, ours wins on conflict for non-hook keys
+            #   - .hooks: for each event (PreToolUse, PostToolUse, Stop, ...)
+            #     concatenate user's entries with ours so both fire.
+            if jq -s '
+              .[0] as $a | .[1] as $b |
+              ($a * $b) |
+              .hooks = (
+                (($a.hooks // {}) | keys) + (($b.hooks // {}) | keys) | unique
+                | map(. as $k | {($k): (($a.hooks[$k] // []) + ($b.hooks[$k] // []))})
+                | add
+              )
+            ' "$TMP_ORIG" "$SETTINGS_SRC" > "$TMP_MERGED" 2>/dev/null; then
+              mv "$TMP_MERGED" "$SETTINGS_DST"
+              echo "  ✓ .claude/settings.json (merged)"
+            else
+              # Merge failed — restore the original so we don't leave the
+              # user with nothing.
+              cp "$TMP_ORIG" "$SETTINGS_DST"
+              echo "  ! merge failed — restored original from backup"
+              rm -f "$TMP_MERGED"
+            fi
+            rm -f "$TMP_ORIG"
+          fi
+          ;;
+      esac
+    fi
+  fi
+
   if [ "$DRY_RUN" -eq 0 ]; then
     for H in "$SCRIPT_DIR/.claude/hooks/"*.sh; do
       [ -f "$H" ] || continue
@@ -229,6 +311,23 @@ if [ -f "$SCRIPT_DIR/agent-md.toml.example" ]; then
     echo "  ✓ agent-md.toml.example  (copy to agent-md.toml to declare verify commands)"
   else
     echo "  · agent-md.toml already present — not touched"
+  fi
+fi
+
+# --- .gitignore seeding for hook scratch state ---
+# Hooks write to .agent/state/ (retry counters, visual artifacts if the
+# user puts them there). None of that is source — keep it out of commits.
+if [ "$DRY_RUN" -eq 0 ]; then
+  GI="$TARGET/.gitignore"
+  # shellcheck disable=SC2016
+  MARKER='# added by agent-md installer'
+  if [ ! -f "$GI" ] || ! grep -qF "$MARKER" "$GI"; then
+    if [ -f "$GI" ]; then
+      printf '\n%s\n.agent/state/\n' "$MARKER" >> "$GI"
+    else
+      printf '%s\n.agent/state/\n' "$MARKER" > "$GI"
+    fi
+    echo "  ✓ .gitignore       (added .agent/state/)"
   fi
 fi
 

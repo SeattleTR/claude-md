@@ -13,7 +13,7 @@
 # errors are addressed; it does not unwind the write.
 #
 # Configuration:
-#   agent-md.toml [verify] lint_file = "npx eslint --quiet {file}"
+#   agent-md.toml [verify] lint_file = "npx eslint {file}"
 #   {file} is substituted with the edited file path.
 
 # shellcheck source=.claude/hooks/_lib.sh
@@ -26,8 +26,10 @@ if [ -z "$FILE_PATH" ]; then
   exit 0
 fi
 
-# Only check code files we know how to lint per-file
-if ! echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx|py|rs)$'; then
+# Only code files we know how to lint per-file. Rust dropped — `cargo
+# check` is project-wide, there's no sensible per-file check. Rust lint
+# runs at Stop instead.
+if ! echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx|py)$'; then
   exit 0
 fi
 
@@ -47,10 +49,10 @@ if [ -n "$CFG_LINT_FILE" ]; then
 ${OUT}"
   fi
 else
-  # Heuristic fallback
+  # Heuristic fallback. No --quiet: warnings are information, not noise.
   if echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx)$' \
      && { compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; }; then
-    OUT=$(npx eslint --quiet "$FILE_PATH" 2>&1)
+    OUT=$(npx eslint "$FILE_PATH" 2>&1)
     # shellcheck disable=SC2181
     if [ $? -ne 0 ]; then
       ERRORS="eslint errors in ${FILE_PATH}:

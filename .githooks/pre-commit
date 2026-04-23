@@ -7,7 +7,9 @@
 # Bypass (NOT recommended): git commit --no-verify
 #
 # Runs the same verification stack as Claude Code's stop-verify hook,
-# plus the state-enforcement check against memory/progress.md.
+# plus the state-enforcement check against memory/progress.md. Package
+# manager / test command detection is shared via .claude/hooks/_lib.sh
+# when present so Stop and pre-commit cannot disagree.
 #
 # Configuration:
 #   agent-md.toml [verify] typecheck / lint / test override heuristics.
@@ -23,35 +25,55 @@ ok()  { printf '\033[32m✓\033[0m %s\n' "$*"; }
 
 log "Archimedes pre-commit verification"
 
-# --- Minimal TOML reader (same logic as .claude/hooks/_lib.sh) ---
-read_toml() {
-  local file="$1" section="$2" key="$3"
-  [ -f "$file" ] || return 0
-  awk -v section="$section" -v key="$key" '
-    BEGIN { in_sec = 0 }
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*\[/ {
-      sec = $0
-      sub(/^[[:space:]]*\[/, "", sec); sub(/\][[:space:]]*$/, "", sec)
-      gsub(/[[:space:]]/, "", sec)
-      in_sec = (sec == section) ? 1 : 0
-      next
-    }
-    in_sec && index($0, "=") > 0 {
-      k = substr($0, 1, index($0, "=") - 1)
-      v = substr($0, index($0, "=") + 1)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
-      sub(/[[:space:]]*#.*$/, "", v)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-      if (k == key) {
-        if (v ~ /^".*"$/)      { gsub(/^"|"$/, "", v) }
-        else if (v ~ /^'\''.*'\''$/) { gsub(/^'\''|'\''$/, "", v) }
-        print v
-        exit
+# --- Shared helpers ---
+# Prefer the Claude-hook library so Stop + pre-commit stay in lockstep.
+# Fall back to inlined copies of the two helpers we need.
+if [ -f ".claude/hooks/_lib.sh" ]; then
+  # shellcheck source=.claude/hooks/_lib.sh
+  . ".claude/hooks/_lib.sh"
+else
+  read_toml() {
+    local file="$1" section="$2" key="$3"
+    [ -f "$file" ] || return 0
+    awk -v section="$section" -v key="$key" '
+      BEGIN { in_sec = 0 }
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*\[/ {
+        sec = $0
+        sub(/^[[:space:]]*\[/, "", sec); sub(/\][[:space:]]*$/, "", sec)
+        gsub(/[[:space:]]/, "", sec)
+        in_sec = (sec == section) ? 1 : 0
+        next
       }
-    }
-  ' "$file"
-}
+      in_sec && index($0, "=") > 0 {
+        k = substr($0, 1, index($0, "=") - 1)
+        v = substr($0, index($0, "=") + 1)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+        sub(/[[:space:]]*#.*$/, "", v)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        if (k == key) {
+          if (v ~ /^".*"$/)      { gsub(/^"|"$/, "", v) }
+          else if (v ~ /^'\''.*'\''$/) { gsub(/^'\''|'\''$/, "", v) }
+          print v
+          exit
+        }
+      }
+    ' "$file"
+  }
+  npm_test_cmd() {
+    if   [ -f "pnpm-lock.yaml" ];                       then echo "pnpm test --silent"
+    elif [ -f "yarn.lock" ];                            then echo "yarn test --silent"
+    elif [ -f "bun.lockb" ] || [ -f "bun.lock" ];       then echo "bun test"
+    elif [ -f "package-lock.json" ] || [ -f "package.json" ]; then echo "npm test --silent"
+    fi
+  }
+  has_npm_test_script() {
+    [ -f "package.json" ] || return 1
+    local t
+    t=$(jq -r '.scripts.test // empty' package.json 2>/dev/null)
+    [ -n "$t" ] && [ "$t" != 'echo "Error: no test specified" && exit 1' ]
+  }
+fi
 
 TOML="${AGENT_MD_TOML:-agent-md.toml}"
 CFG_TYPECHECK=$(read_toml "$TOML" verify typecheck)
@@ -81,7 +103,7 @@ fi
 if [ -n "$CFG_LINT" ]; then
   run_check "$CFG_LINT" "$CFG_LINT"
 elif compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
-  run_check "eslint" "npx eslint . --quiet"
+  run_check "eslint" "npx eslint ."
 fi
 
 # --- Python ruff (when no explicit lint override) ---
@@ -106,27 +128,17 @@ fi
 # --- Tests ---
 if [ -n "$CFG_TEST" ]; then
   run_check "$CFG_TEST" "$CFG_TEST"
-elif [ -f "package.json" ]; then
-  # Detect package manager via lockfile (pnpm > yarn > bun > npm)
-  PM="npm"
-  [ -f "pnpm-lock.yaml" ] && PM="pnpm"
-  [ -f "yarn.lock" ] && PM="yarn"
-  [ -f "bun.lockb" ] || [ -f "bun.lock" ] && PM="bun"
-  HAS_TEST=$(node -e "try{const p=require('./package.json');if(p.scripts&&p.scripts.test&&p.scripts.test!=='echo \"Error: no test specified\" && exit 1')process.stdout.write('1')}catch{}" 2>/dev/null)
-  if [ "${HAS_TEST:-}" = "1" ]; then
-    case "$PM" in
-      pnpm) run_check "pnpm test" "pnpm test --silent" ;;
-      yarn) run_check "yarn test" "yarn test --silent" ;;
-      bun)  run_check "bun test"  "bun test" ;;
-      npm)  run_check "npm test"  "npm test --silent" ;;
-    esac
+else
+  NPM_TEST=$(npm_test_cmd)
+  if [ -n "$NPM_TEST" ] && has_npm_test_script; then
+    run_check "$NPM_TEST" "$NPM_TEST"
+  elif [ -f "pyproject.toml" ] || [ -f "pytest.ini" ]; then
+    if command -v pytest &>/dev/null; then
+      run_check "pytest" "pytest --tb=short -q"
+    fi
+  elif [ -f "Cargo.toml" ]; then
+    run_check "cargo test" "cargo test --quiet"
   fi
-elif [ -f "pyproject.toml" ] || [ -f "pytest.ini" ]; then
-  if command -v pytest &>/dev/null; then
-    run_check "pytest" "pytest --tb=short -q"
-  fi
-elif [ -f "Cargo.toml" ]; then
-  run_check "cargo test" "cargo test --quiet"
 fi
 
 # --- State enforcement (memory/progress.md) ---
@@ -134,7 +146,7 @@ if [ -f "memory/progress.md" ]; then
   STAGED=$(git diff --cached --name-only)
   SOURCE_CHANGED=$(
     echo "$STAGED" \
-      | grep -vE '^(memory/|docs/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$|agent-md\.toml(\.example)?$)' \
+      | grep -vE '^(memory/|docs/|\.agent/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$|agent-md\.toml(\.example)?$)' \
       | grep -v '^$' \
       | grep -cvE '\.md$' || true
   )
