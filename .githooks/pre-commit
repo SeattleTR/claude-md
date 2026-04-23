@@ -1,0 +1,144 @@
+#!/bin/bash
+# .githooks/pre-commit
+# Universal enforcement layer — works for Codex, Cursor, Windsurf, Aider,
+# and any agent (or human) that uses git commit.
+#
+# Activate: git config core.hooksPath .githooks
+# Bypass (NOT recommended): git commit --no-verify
+#
+# Runs the same verification stack as Claude Code's stop-verify hook,
+# plus the state-enforcement check against memory/progress.md.
+
+set -u
+
+FAIL=0
+CHECKS=0
+
+log() { printf '\033[36m▸\033[0m %s\n' "$*"; }
+err() { printf '\033[31m✗\033[0m %s\n' "$*" >&2; }
+ok()  { printf '\033[32m✓\033[0m %s\n' "$*"; }
+
+log "Archimedes pre-commit verification"
+
+# --- TypeScript ---
+if [ -f "tsconfig.json" ]; then
+  CHECKS=$((CHECKS + 1))
+  if npx tsc --noEmit 2>&1; then
+    ok "tsc --noEmit"
+  else
+    err "tsc --noEmit failed"
+    FAIL=1
+  fi
+fi
+
+# --- ESLint ---
+if ls .eslintrc* eslint.config.* 2>/dev/null | grep -q .; then
+  CHECKS=$((CHECKS + 1))
+  if npx eslint . --quiet 2>&1; then
+    ok "eslint"
+  else
+    err "eslint failed"
+    FAIL=1
+  fi
+fi
+
+# --- Python ruff ---
+if command -v ruff &>/dev/null; then
+  HAS_PY=$(git diff --cached --name-only | grep -c '\.py$' || true)
+  if [ "${HAS_PY:-0}" -gt 0 ] || ls *.py 2>/dev/null | head -1 | grep -q .; then
+    CHECKS=$((CHECKS + 1))
+    if ruff check . 2>&1; then
+      ok "ruff"
+    else
+      err "ruff failed"
+      FAIL=1
+    fi
+  fi
+fi
+
+# --- Python mypy ---
+if command -v mypy &>/dev/null && { [ -f "mypy.ini" ] || grep -q '\[tool.mypy\]' pyproject.toml 2>/dev/null; }; then
+  CHECKS=$((CHECKS + 1))
+  if mypy . 2>&1; then
+    ok "mypy"
+  else
+    err "mypy failed"
+    FAIL=1
+  fi
+fi
+
+# --- Rust ---
+if [ -f "Cargo.toml" ]; then
+  CHECKS=$((CHECKS + 1))
+  if cargo check 2>&1; then
+    ok "cargo check"
+  else
+    err "cargo check failed"
+    FAIL=1
+  fi
+fi
+
+# --- Tests ---
+if [ -f "package.json" ]; then
+  HAS_TEST=$(node -e "try{const p=require('./package.json');if(p.scripts&&p.scripts.test&&p.scripts.test!=='echo \"Error: no test specified\" && exit 1')process.stdout.write('1')}catch{}" 2>/dev/null)
+  if [ "${HAS_TEST:-}" = "1" ]; then
+    CHECKS=$((CHECKS + 1))
+    if npm test --silent 2>&1; then
+      ok "npm test"
+    else
+      err "npm test failed"
+      FAIL=1
+    fi
+  fi
+elif [ -f "pyproject.toml" ] || [ -f "pytest.ini" ]; then
+  if command -v pytest &>/dev/null; then
+    CHECKS=$((CHECKS + 1))
+    if pytest --tb=short -q 2>&1; then
+      ok "pytest"
+    else
+      err "pytest failed"
+      FAIL=1
+    fi
+  fi
+elif [ -f "Cargo.toml" ]; then
+  CHECKS=$((CHECKS + 1))
+  if cargo test --quiet 2>&1; then
+    ok "cargo test"
+  else
+    err "cargo test failed"
+    FAIL=1
+  fi
+fi
+
+# --- State enforcement (memory/progress.md) ---
+if [ -f "memory/progress.md" ]; then
+  STAGED=$(git diff --cached --name-only)
+  SOURCE_CHANGED=$(
+    echo "$STAGED" \
+      | grep -vE '^(memory/|docs/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$)' \
+      | grep -v '^$' \
+      | grep -cvE '\.md$' || true
+  )
+  PROGRESS_STAGED=$(echo "$STAGED" | grep -c '^memory/progress\.md$' || true)
+
+  if [ "${SOURCE_CHANGED:-0}" -gt 0 ] && [ "${PROGRESS_STAGED:-0}" -eq 0 ]; then
+    err "memory/progress.md not staged — ${SOURCE_CHANGED} source file(s) changed without progress update"
+    FAIL=1
+  else
+    ok "progress.md up to date"
+  fi
+fi
+
+echo ""
+if [ "$FAIL" -eq 1 ]; then
+  err "Pre-commit BLOCKED. Fix errors above, re-stage, and retry."
+  echo "   (Bypass not recommended: git commit --no-verify)"
+  exit 1
+fi
+
+if [ "$CHECKS" -eq 0 ]; then
+  log "No type-checker, linter, or test suite detected. Commit allowed but unverified."
+else
+  ok "All $CHECKS check(s) passed."
+fi
+exit 0

@@ -9,6 +9,12 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit-verify.sh",
             "timeout": 120,
             "statusMessage": "Verifying edit..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/tdd-check.sh",
+            "timeout": 10,
+            "statusMessage": "TDD check..."
           }
         ]
       },
@@ -32,6 +38,18 @@
             "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/stop-verify.sh",
             "timeout": 300,
             "statusMessage": "Running final verification..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/state-enforcement.sh",
+            "timeout": 10,
+            "statusMessage": "Checking progress.md..."
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/sensory-validation.sh",
+            "timeout": 10,
+            "statusMessage": "Checking visual validation..."
           }
         ]
       }
