@@ -41,7 +41,26 @@ If the files do not exist, initialize them before substantive work.
 
 ---
 
-## 3. Planning
+## 3. User Intent And Control
+
+- If the user provides a written plan, follow it step by step. Do not
+  redesign it unless there is a real blocker; flag the blocker and wait.
+- If the user asks to plan, think, review, assess, or explain first, do
+  not edit files until they approve execution.
+- Never push to a shared remote unless the user explicitly asks.
+- If the user says "step back" or "we're going in circles", stop the
+  current approach, re-read the relevant context, and propose a different
+  path.
+- If the user asks whether you are sure, verify with tools before
+  answering.
+- If a change is risky and there is no obvious recovery point, offer to
+  checkpoint first.
+- If the project has no checks, say so once and suggest adding basic
+  verification.
+
+---
+
+## 4. Planning
 
 Use a written plan for non-trivial work: multi-file changes, behavioral
 changes, architectural choices, or anything that needs more than a small
@@ -62,7 +81,7 @@ user approves a plan, execute without repeating it.
 
 ---
 
-## 4. Execution Limits
+## 5. Execution Limits
 
 Agents degrade when they batch too much work without feedback. Keep each
 implementation pass bounded.
@@ -76,7 +95,7 @@ implementation pass bounded.
 
 ---
 
-## 5. Code Quality
+## 6. Code Quality
 
 ### Defaults, Not Commandments
 
@@ -105,7 +124,7 @@ like a template.
 
 ---
 
-## 6. Test-Driven Changes
+## 7. Test-Driven Changes
 
 For bug fixes and new behavior:
 
@@ -119,7 +138,7 @@ It is a nudge, not proof of test-first ordering.
 
 ---
 
-## 7. Verification
+## 8. Verification
 
 Do not claim completion from inspection alone.
 
@@ -150,7 +169,7 @@ Use:
 
 ---
 
-## 8. Edit Safety
+## 9. Edit Safety
 
 - Re-read a file before editing it, and re-read after editing.
 - On rename or signature changes, search separately for direct calls,
@@ -162,7 +181,7 @@ Use:
 
 ---
 
-## 9. Helper Disclosure
+## 10. Helper Disclosure
 
 Do not load every workflow into context. Discover local helper scripts
 only when needed:
@@ -178,7 +197,7 @@ These are plain shell helpers. Native Codex skills are under
 
 ---
 
-## 10. Context Management
+## 11. Context Management
 
 - After long conversations, re-read relevant files before editing.
 - If memory is degrading, write the current state to `memory/progress.md`
@@ -190,7 +209,7 @@ These are plain shell helpers. Native Codex skills are under
 
 ---
 
-## 11. Self-Correction
+## 12. Self-Correction
 
 - After any correction from the human, add the pattern to
   `memory/gotchas.md`.
@@ -201,7 +220,7 @@ These are plain shell helpers. Native Codex skills are under
 
 ---
 
-## 12. Communication
+## 13. Communication
 
 - When the user says "yes", "do it", or "push", execute.
 - When using existing code as reference, study it and match its patterns.
@@ -211,7 +230,7 @@ These are plain shell helpers. Native Codex skills are under
 
 ---
 
-## 13. Installed Agent Targets
+## 14. Installed Agent Targets
 
 `AGENT.md` is the source of truth. The installer copies or wraps it for
 agent-specific locations.
