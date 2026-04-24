@@ -35,8 +35,23 @@ teardown() { teardown_repo; }
   echo "$out" | grep -q '"permissionDecision": "deny"'
 }
 
+@test "denies git reset --hard" {
+  out=$(run_hook block-destructive.sh '{"tool_input":{"command":"git reset --hard"}}')
+  echo "$out" | grep -q '"permissionDecision": "deny"'
+}
+
 @test "denies cat .env" {
   out=$(run_hook block-destructive.sh '{"tool_input":{"command":"cat .env"}}')
+  echo "$out" | grep -q '"permissionDecision": "deny"'
+}
+
+@test "denies cat nested .env" {
+  out=$(run_hook block-destructive.sh '{"tool_input":{"command":"cat config/.env"}}')
+  echo "$out" | grep -q '"permissionDecision": "deny"'
+}
+
+@test "denies grep token from .env" {
+  out=$(run_hook block-destructive.sh '{"tool_input":{"command":"grep API_KEY .env"}}')
   echo "$out" | grep -q '"permissionDecision": "deny"'
 }
 

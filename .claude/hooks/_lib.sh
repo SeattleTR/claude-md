@@ -47,6 +47,11 @@ stat_mtime() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null
 }
 
+# file_size <path> — portable byte size (macOS + Linux).
+file_size() {
+  stat -f %z "$1" 2>/dev/null || stat -c %s "$1" 2>/dev/null
+}
+
 # detect_pm — prints the detected Node package manager based on lockfile,
 # or nothing. Order: pnpm > yarn > bun > npm > (nothing).
 detect_pm() {
@@ -78,9 +83,10 @@ has_npm_test_script() {
 }
 
 # visual_evidence_ok <artifacts_dir> <freshness_seconds>
-# Returns 0 when there's at least one fresh markdown evidence file in
-# <artifacts_dir> that mentions the filename of at least one fresh image
-# in the same directory. Returns 1 otherwise.
+# Returns 0 when there's at least one fresh, non-empty markdown evidence
+# file in <artifacts_dir> that mentions the filename of at least one
+# fresh, non-empty image in the same directory. The markdown must also
+# include the minimum verification fields agent-md asks for.
 #
 # This is deliberately opinionated — the agent must write prose about
 # what it verified, not just drop a screenshot. A screenshot alone is
@@ -91,15 +97,23 @@ visual_evidence_ok() {
   local now
   now=$(date +%s)
 
-  local md img img_name md_mtime img_mtime
+  local md img img_name md_mtime img_mtime md_size img_size
   while IFS= read -r md; do
     [ -z "$md" ] && continue
+    md_size=$(file_size "$md")
+    [ "${md_size:-0}" -gt 0 ] || continue
     md_mtime=$(stat_mtime "$md")
     [ -z "$md_mtime" ] && continue
     [ $((now - md_mtime)) -le "$fresh" ] || continue
+    grep -Eiq 'changed files?:' "$md" || continue
+    grep -Eiq '(route|url):' "$md" || continue
+    grep -Eiq 'viewport:' "$md" || continue
+    grep -Eiq '(observed|result):' "$md" || continue
 
     while IFS= read -r img; do
       [ -z "$img" ] && continue
+      img_size=$(file_size "$img")
+      [ "${img_size:-0}" -gt 0 ] || continue
       img_mtime=$(stat_mtime "$img")
       [ -z "$img_mtime" ] && continue
       [ $((now - img_mtime)) -le "$fresh" ] || continue

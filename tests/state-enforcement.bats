@@ -62,9 +62,21 @@ teardown() { teardown_repo; }
 }
 
 @test "ignores .agent/ scratch state" {
-  mkdir -p .agent/state
+  mkdir -p .agent/state .agent/visual
   echo "1" > .agent/state/stop-verify-retries
-  echo "note" > .agent/visual/home.png 2>/dev/null || mkdir -p .agent/visual && echo "img" > .agent/visual/home.png
+  echo "img" > .agent/visual/home.png
+  out=$(run_hook state-enforcement.sh '{"stop_hook_active":false}')
+  [ -z "$out" ]
+}
+
+@test "ignores installed agent-md infrastructure" {
+  mkdir -p .agent-md/bin .codex/hooks .agents/skills/demo .cursor/rules .windsurf/rules
+  echo "#!/bin/bash" > .agent-md/bin/helper.sh
+  echo "{}" > .codex/hooks.json
+  echo "# hook" > .codex/hooks/stop.sh
+  echo "# skill" > .agents/skills/demo/SKILL.md
+  echo "# cursor" > .cursor/rules/agent-md.mdc
+  echo "# windsurf" > .windsurf/rules/agent-md.md
   out=$(run_hook state-enforcement.sh '{"stop_hook_active":false}')
   [ -z "$out" ]
 }

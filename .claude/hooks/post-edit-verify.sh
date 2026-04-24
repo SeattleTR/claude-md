@@ -13,7 +13,7 @@
 # errors are addressed; it does not unwind the write.
 #
 # Configuration:
-#   agent-md.toml [verify] lint_file = "npx eslint {file}"
+#   agent-md.toml [verify] lint_file = "npx --no-install eslint {file}"
 #   {file} is substituted with the edited file path.
 
 # shellcheck source=.claude/hooks/_lib.sh
@@ -52,7 +52,7 @@ else
   # Heuristic fallback. No --quiet: warnings are information, not noise.
   if echo "$FILE_PATH" | grep -qE '\.(ts|tsx|js|jsx)$' \
      && { compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; }; then
-    OUT=$(npx eslint "$FILE_PATH" 2>&1)
+    OUT=$(npx --no-install eslint "$FILE_PATH" 2>&1)
     # shellcheck disable=SC2181
     if [ $? -ne 0 ]; then
       ERRORS="eslint errors in ${FILE_PATH}:

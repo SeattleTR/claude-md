@@ -39,8 +39,8 @@ freshness_seconds = 3600
 EOF
   echo "<div/>" > App.tsx
   mkdir -p .agent/visual
-  touch .agent/visual/home.png
-  # A screenshot alone is a photo, not a verification — must still block.
+  echo "png" > .agent/visual/home.png
+  # A screenshot alone is not verification — must still block.
   out=$(run_hook sensory-reminder.sh '{"stop_hook_active":false}')
   echo "$out" | jq -e '.decision == "block"' > /dev/null
 }
@@ -54,7 +54,7 @@ freshness_seconds = 3600
 EOF
   echo "<div/>" > App.tsx
   mkdir -p .agent/visual
-  touch .agent/visual/home.png
+  echo "png" > .agent/visual/home.png
   cat > .agent/visual/note.md <<'EOF'
 # Visual check
 Some prose that does NOT name the image file.
@@ -72,10 +72,15 @@ freshness_seconds = 3600
 EOF
   echo "<div/>" > App.tsx
   mkdir -p .agent/visual
-  touch .agent/visual/home.png
+  echo "png" > .agent/visual/home.png
   cat > .agent/visual/note.md <<'EOF'
 # Visual check
-Route: /home, viewport 1440x900. Artifact: home.png. Result: looks correct.
+Changed files:
+- App.tsx
+Route: /home
+Viewport: 1440x900
+Artifact: home.png
+Observed result: renders without overlap.
 EOF
   out=$(run_hook sensory-reminder.sh '{"stop_hook_active":false}')
   echo "$out" | jq -e '.hookSpecificOutput.additionalContext' > /dev/null

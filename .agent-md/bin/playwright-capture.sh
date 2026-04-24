@@ -1,6 +1,6 @@
 #!/bin/bash
 # playwright-capture.sh — capture DOM screenshot of a URL for visual validation
-# Usage: ./skills/playwright-capture.sh <url> [output.png]
+# Usage: ./.agent-md/bin/playwright-capture.sh <url> [output.png]
 # Requires: playwright installed (npm i -D playwright && npx playwright install chromium)
 #
 # Output: a PNG file the agent can pass to a Vision-Language Model (VLM)

@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh — Archimedes Agent Directives installer
+# install.sh — agent-md installer
 #
 # Usage:
 #   ./install.sh                                    # current dir, auto-detect agents
@@ -16,7 +16,7 @@
 # Or via curl (from inside your project dir):
 #   curl -sL https://raw.githubusercontent.com/iamfakeguru/agent-md/main/install.sh | bash
 #
-# Agents supported: claude, codex, cursor, windsurf, aider, all (default)
+# Agents supported: claude, codex, cursor, windsurf, all (default)
 #
 # Defaults (safe by design):
 #   --agent=all
@@ -29,7 +29,7 @@
 #   memory/ files are never overwritten (user state).
 #   .githooks/pre-commit is installed but NOT activated on curl|bash.
 #     You get a printed command to activate it manually.
-#   .agent/state/ is auto-added to .gitignore (hook scratch, not source).
+#   .agent/ is auto-added to .gitignore (hook scratch + visual evidence).
 
 set -e
 
@@ -68,7 +68,7 @@ if [ ! -d "$TARGET" ]; then
 fi
 
 # Validate agent list early (don't silently skip unknown names)
-VALID_AGENTS="claude codex cursor windsurf aider all auto"
+VALID_AGENTS="claude codex cursor windsurf all auto"
 for A in $(echo "$AGENT" | tr ',' ' '); do
   if ! echo " $VALID_AGENTS " | grep -q " $A "; then
     echo "Error: unknown agent '$A'. Valid: $VALID_AGENTS"; exit 1
@@ -82,14 +82,9 @@ if [ ! -f "$SCRIPT_DIR/AGENT.md" ]; then
   # Running via curl pipe — download the package
   echo "▸ Downloading agent-md..."
   TMP=$(mktemp -d)
-  if ! curl -sL https://github.com/iamfakeguru/agent-md/archive/main.tar.gz | tar -xz -C "$TMP"; then
-    # Fallback to legacy claude-md URL (GitHub auto-redirects)
-    curl -sL https://github.com/iamfakeguru/claude-md/archive/main.tar.gz | tar -xz -C "$TMP"
-  fi
+  curl -sL https://github.com/iamfakeguru/agent-md/archive/main.tar.gz | tar -xz -C "$TMP"
   if [ -d "$TMP/agent-md-main" ]; then
     SCRIPT_DIR="$TMP/agent-md-main"
-  elif [ -d "$TMP/claude-md-main" ]; then
-    SCRIPT_DIR="$TMP/claude-md-main"
   fi
 fi
 
@@ -98,18 +93,22 @@ if [ ! -f "$SCRIPT_DIR/AGENT.md" ]; then
   exit 1
 fi
 
+if ! command -v jq &>/dev/null; then
+  echo "  ! jq not found. Hooks require jq for JSON parsing; install jq before relying on enforcement."
+fi
+
 # Detect curl|bash (stdin not a tty). We use this to keep defaults safe.
 NON_INTERACTIVE=0
 [ ! -t 0 ] && NON_INTERACTIVE=1
 
 # Resolve which agents to install for
 if [ "$AGENT" = "all" ] || [ "$AGENT" = "auto" ]; then
-  AGENT_LIST="claude codex cursor windsurf aider"
+  AGENT_LIST="claude codex cursor windsurf"
 else
   AGENT_LIST=$(echo "$AGENT" | tr ',' ' ')
 fi
 
-echo "▸ Installing Archimedes Agent Directives → $TARGET"
+echo "▸ Installing agent-md directives → $TARGET"
 echo "▸ Target agents: $AGENT_LIST"
 [ "$DRY_RUN" -eq 1 ] && echo "▸ DRY RUN — no files will be changed"
 echo ""
@@ -149,40 +148,63 @@ copy_file() {
   echo "  ✓ $label"
 }
 
+copy_with_agent_body() {
+  # dst, label, header
+  local dst="$1" label="$2" header="$3"
+  skip_existing "$dst" && return 0
+  if [ "$DRY_RUN" -eq 1 ]; then
+    echo "  → would write     $label"
+    return 0
+  fi
+  mkdir -p "$(dirname "$dst")"
+  backup_if_exists "$dst"
+  {
+    printf '%s\n\n' "$header"
+    cat "$SCRIPT_DIR/AGENT.md"
+  } > "$dst"
+  echo "  ✓ $label"
+}
+
 # --- Master file ---
 copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/AGENT.md" "AGENT.md"
 
-# --- Agent-specific aliases (copies, not symlinks — Windows-safe) ---
+# --- Agent-specific instruction files ---
+if echo " $AGENT_LIST " | grep -qE " (codex|cursor|windsurf) "; then
+  copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/AGENTS.md" "AGENTS.md        (Codex / Cursor / Windsurf)"
+fi
+
 for TOOL in $AGENT_LIST; do
   case "$TOOL" in
     claude)
       copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/CLAUDE.md" "CLAUDE.md        (Claude Code)"
       ;;
     codex)
-      copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/AGENTS.md" "AGENTS.md        (Codex)"
+      if [ "$DRY_RUN" -eq 0 ]; then
+        mkdir -p "$TARGET/.codex/hooks" "$TARGET/.agents/skills"
+      fi
+      copy_file "$SCRIPT_DIR/.codex/hooks.json" "$TARGET/.codex/hooks.json" ".codex/hooks.json"
+      for H in "$SCRIPT_DIR/.codex/hooks/"*.sh; do
+        [ -f "$H" ] || continue
+        copy_file "$H" "$TARGET/.codex/hooks/$(basename "$H")" ".codex/hooks/$(basename "$H")"
+      done
+      if [ "$DRY_RUN" -eq 0 ]; then
+        chmod +x "$TARGET/.codex/hooks/"*.sh 2>/dev/null || true
+      fi
+      for S in "$SCRIPT_DIR/.agents/skills/"*; do
+        [ -d "$S" ] || continue
+        SKILL_NAME=$(basename "$S")
+        [ "$DRY_RUN" -eq 0 ] && mkdir -p "$TARGET/.agents/skills/$SKILL_NAME"
+        for F in "$S"/*; do
+          [ -f "$F" ] || continue
+          copy_file "$F" "$TARGET/.agents/skills/$SKILL_NAME/$(basename "$F")" ".agents/skills/$SKILL_NAME/$(basename "$F")"
+        done
+      done
       ;;
     cursor)
-      copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/.cursorrules" ".cursorrules     (Cursor)"
+      copy_with_agent_body "$TARGET/.cursor/rules/agent-md.mdc" ".cursor/rules/agent-md.mdc (Cursor)" "---"$'\n'"alwaysApply: true"$'\n'"---"
       ;;
     windsurf)
-      copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/.windsurfrules" ".windsurfrules   (Windsurf)"
-      ;;
-    aider)
-      copy_file "$SCRIPT_DIR/AGENT.md" "$TARGET/CONVENTIONS.md" "CONVENTIONS.md   (Aider)"
-      # Aider needs explicit activation via .aider.conf.yml
-      if [ ! -f "$TARGET/.aider.conf.yml" ]; then
-        if [ "$DRY_RUN" -eq 1 ]; then
-          echo "  → would write     .aider.conf.yml (read: CONVENTIONS.md)"
-        else
-          cat > "$TARGET/.aider.conf.yml" <<'YML'
-# Aider configuration — auto-load Archimedes directives.
-read: CONVENTIONS.md
-YML
-          echo "  ✓ .aider.conf.yml  (auto-loads CONVENTIONS.md)"
-        fi
-      else
-        echo "  · .aider.conf.yml already present — add 'read: CONVENTIONS.md' manually"
-      fi
+      copy_with_agent_body "$TARGET/.windsurf/rules/agent-md.md" ".windsurf/rules/agent-md.md (Windsurf)" "---"$'\n'"trigger: always_on"$'\n'"---"
       ;;
   esac
 done
@@ -261,9 +283,9 @@ if echo " $AGENT_LIST " | grep -q " claude "; then
   if [ "$DRY_RUN" -eq 0 ]; then
     for H in "$SCRIPT_DIR/.claude/hooks/"*.sh; do
       [ -f "$H" ] || continue
-      cp "$H" "$TARGET/.claude/hooks/$(basename "$H")"
+      copy_file "$H" "$TARGET/.claude/hooks/$(basename "$H")" ".claude/hooks/$(basename "$H")"
     done
-    chmod +x "$TARGET/.claude/hooks/"*.sh
+    chmod +x "$TARGET/.claude/hooks/"*.sh 2>/dev/null || true
     HOOK_COUNT=$(find "$TARGET/.claude/hooks" -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l | tr -d ' ')
     echo "  ✓ .claude/hooks/   (${HOOK_COUNT} hooks)"
   else
@@ -284,22 +306,21 @@ else
   echo "  → would populate  memory/ (only missing files)"
 fi
 
-# --- Skills ---
+# --- agent-md helper scripts ---
 if [ "$DRY_RUN" -eq 0 ]; then
-  mkdir -p "$TARGET/skills"
-  for F in "$SCRIPT_DIR/skills/"*; do
+  mkdir -p "$TARGET/.agent-md/bin"
+  if [ -f "$SCRIPT_DIR/.agent-md/README.md" ]; then
+    copy_file "$SCRIPT_DIR/.agent-md/README.md" "$TARGET/.agent-md/README.md" ".agent-md/README.md"
+  fi
+  for F in "$SCRIPT_DIR/.agent-md/bin/"*; do
     [ -f "$F" ] || continue
-    DST="$TARGET/skills/$(basename "$F")"
-    if [ "$NO_OVERWRITE" -eq 1 ] && [ -e "$DST" ]; then
-      echo "  · skip (exists)    skills/$(basename "$F")"
-      continue
-    fi
-    cp "$F" "$DST"
+    DST="$TARGET/.agent-md/bin/$(basename "$F")"
+    copy_file "$F" "$DST" ".agent-md/bin/$(basename "$F")"
   done
-  chmod +x "$TARGET/skills/"*.sh 2>/dev/null || true
-  echo "  ✓ skills/          (progressive disclosure)"
+  chmod +x "$TARGET/.agent-md/bin/"*.sh 2>/dev/null || true
+  echo "  ✓ .agent-md/bin/   (plain helper scripts)"
 else
-  echo "  → would write     skills/*"
+  echo "  → would write     .agent-md/bin/*"
 fi
 
 # --- Config template (never overwrite a real agent-md.toml) ---
@@ -315,19 +336,24 @@ if [ -f "$SCRIPT_DIR/agent-md.toml.example" ]; then
 fi
 
 # --- .gitignore seeding for hook scratch state ---
-# Hooks write to .agent/state/ (retry counters, visual artifacts if the
-# user puts them there). None of that is source — keep it out of commits.
+# Hooks write to .agent/ for scratch state and visual evidence artifacts.
+# None of that is source — keep it out of commits.
 if [ "$DRY_RUN" -eq 0 ]; then
   GI="$TARGET/.gitignore"
   # shellcheck disable=SC2016
   MARKER='# added by agent-md installer'
-  if [ ! -f "$GI" ] || ! grep -qF "$MARKER" "$GI"; then
+  if [ ! -f "$GI" ]; then
+    printf '%s\n' "$MARKER" > "$GI"
+  elif ! grep -qF "$MARKER" "$GI"; then
+    printf '\n%s\n' "$MARKER" >> "$GI"
+  fi
+  if ! grep -q '^\.agent/$' "$GI"; then
     if [ -f "$GI" ]; then
-      printf '\n%s\n.agent/state/\n' "$MARKER" >> "$GI"
+      printf '.agent/\n' >> "$GI"
     else
-      printf '%s\n.agent/state/\n' "$MARKER" > "$GI"
+      printf '%s\n.agent/\n' "$MARKER" > "$GI"
     fi
-    echo "  ✓ .gitignore       (added .agent/state/)"
+    echo "  ✓ .gitignore       (added .agent/)"
   fi
 fi
 
@@ -338,7 +364,7 @@ if git -C "$TARGET" rev-parse --is-inside-work-tree &>/dev/null; then IN_GIT=1; 
 if [ "$IN_GIT" -eq 1 ]; then
   if [ "$DRY_RUN" -eq 0 ]; then
     mkdir -p "$TARGET/.githooks"
-    cp "$SCRIPT_DIR/.githooks/pre-commit" "$TARGET/.githooks/pre-commit"
+    copy_file "$SCRIPT_DIR/.githooks/pre-commit" "$TARGET/.githooks/pre-commit" ".githooks/pre-commit"
     chmod +x "$TARGET/.githooks/pre-commit"
   fi
 
@@ -375,6 +401,13 @@ echo "  1. Read $TARGET/AGENT.md (the master directives)"
 echo "  2. (Optional) cp agent-md.toml.example agent-md.toml and declare your verify commands"
 echo "  3. Edit memory/plan.md with your project's design"
 echo "  4. Start your agent — it reads directives automatically"
+NEXT_STEP=5
 if [ "$IN_GIT" -eq 1 ] && [ "$GITHOOKS" = "no" ]; then
-  echo "  5. (Optional) Enable universal hooks: git config core.hooksPath .githooks"
+  echo "  ${NEXT_STEP}. (Optional) Enable universal hooks: git config core.hooksPath .githooks"
+  NEXT_STEP=$((NEXT_STEP + 1))
+fi
+if echo " $AGENT_LIST " | grep -q " codex "; then
+  echo "  ${NEXT_STEP}. (Codex) Enable hooks in ~/.codex/config.toml:"
+  echo "       [features]"
+  echo "       codex_hooks = true"
 fi

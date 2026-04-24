@@ -32,7 +32,7 @@ MODIFIED_FILES=$(
 # directive-alias files that the installer copies from AGENT.md.
 SOURCE_CHANGED=$(
   echo "$MODIFIED_FILES" \
-    | grep -vE '^(memory/|docs/|\.agent/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$|agent-md\.toml(\.example)?$)' \
+    | grep -vE '^(memory/|docs/|\.agent/|\.agent-md/|\.agents/|\.claude/|\.codex/|\.cursor/|\.githooks/|\.windsurf/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|agent-md\.toml(\.example)?$)' \
     | grep -v '^$' \
     | grep -cvE '\.md$'
 )

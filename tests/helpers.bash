@@ -6,6 +6,7 @@ setup_repo() {
   REPO_DIR="$(mktemp -d)"
   export REPO_DIR
   cp -r "$BATS_TEST_DIRNAME/../.claude" "$REPO_DIR/"
+  cp -r "$BATS_TEST_DIRNAME/../.codex" "$REPO_DIR/" 2>/dev/null || true
   cd "$REPO_DIR"
   git init -q
   git config user.email t@t

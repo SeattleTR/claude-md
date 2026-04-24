@@ -96,14 +96,14 @@ run_check() {
 if [ -n "$CFG_TYPECHECK" ]; then
   run_check "$CFG_TYPECHECK" "$CFG_TYPECHECK"
 elif [ -f "tsconfig.json" ]; then
-  run_check "tsc --noEmit" "npx tsc --noEmit"
+  run_check "tsc --noEmit" "npx --no-install tsc --noEmit"
 fi
 
 # --- Lint ---
 if [ -n "$CFG_LINT" ]; then
   run_check "$CFG_LINT" "$CFG_LINT"
 elif compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
-  run_check "eslint" "npx eslint ."
+  run_check "eslint" "npx --no-install eslint ."
 fi
 
 # --- Python ruff (when no explicit lint override) ---
@@ -146,7 +146,7 @@ if [ -f "memory/progress.md" ]; then
   STAGED=$(git diff --cached --name-only)
   SOURCE_CHANGED=$(
     echo "$STAGED" \
-      | grep -vE '^(memory/|docs/|\.agent/|\.claude/|\.githooks/|skills/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|\.cursorrules$|\.windsurfrules$|CONVENTIONS\.md$|agent-md\.toml(\.example)?$)' \
+      | grep -vE '^(memory/|docs/|\.agent/|\.agent-md/|\.agents/|\.claude/|\.codex/|\.cursor/|\.githooks/|\.windsurf/|README\.md$|LICENSE$|AGENT\.md$|AGENTS\.md$|CLAUDE\.md$|agent-md\.toml(\.example)?$)' \
       | grep -v '^$' \
       | grep -cvE '\.md$' || true
   )

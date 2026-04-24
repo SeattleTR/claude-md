@@ -32,8 +32,8 @@ fi
 # Note: the regex patterns below use single quotes intentionally.
 # shellcheck disable=SC2016
 
-# Block recursive deletion of root, home, or parent directory
-if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|(-[a-zA-Z]*\s+)*)(\/|~|\$HOME|\.\.)'; then
+# Block recursive deletion of root, cwd, home, or parent directory
+if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|(-[a-zA-Z]*\s+)*)(\/($|[[:space:];&|])|(~|\$HOME|\.\.)(/|$|[[:space:];&|])|\.($|[[:space:];&|]))'; then
   deny "Blocked destructive rm command targeting root, home, or parent directory. If intentional, run manually."
 fi
 
@@ -53,14 +53,14 @@ if echo "$COMMAND" | grep -qiE 'DROP\s+(TABLE|DATABASE)|TRUNCATE\s+TABLE|DELETE\
 fi
 
 # Block force pushes and hard resets against shared refs
-if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force|git\s+push\s+-f\b|git\s+reset\s+--hard\s+(HEAD~|origin)'; then
+if echo "$COMMAND" | grep -qE 'git\s+push\s+.*--force|git\s+push\s+-f\b|git\s+reset\s+--hard\b'; then
   deny "Blocked force push or hard reset. If intentional, run manually."
 fi
 
 # Block .env file reads (credential exposure).
 # Match `.env` as a standalone token — NOT `.env.example`, `.environment`, etc.
 # After `.env` we require end-of-string, whitespace, or a shell metachar.
-if echo "$COMMAND" | grep -qE '(cat|less|head|tail|more|source|grep|sed|awk|bat)\s+\.env([[:space:];&|>]|$)|echo.*\$\(.*\.env([[:space:];&|>]|$)'; then
+if echo "$COMMAND" | grep -qE '(^|[[:space:];&|])(cat|less|head|tail|more|source|grep|sed|awk|bat)([[:space:]][^;&|>]*)?[[:space:]]([^[:space:];&|>]*/)?\.env([[:space:];&|>]|$)|echo.*\$\(.*([^[:space:];&|>]*/)?\.env([[:space:];&|>]|$)'; then
   deny "Blocked .env file access. Credentials should not be read by the agent."
 fi
 

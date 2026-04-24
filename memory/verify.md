@@ -18,7 +18,7 @@ in `progress.md`. No exceptions.
 
 ## Visual Verification (UI changes only)
 
-- [ ] Screenshot captured via Playwright (`skills/playwright-capture.sh`)
+- [ ] Screenshot captured via Playwright (`.agent-md/bin/playwright-capture.sh`)
 - [ ] VLM or human review confirms visual intent matches the spec
 - [ ] No self-grading ("the code looks right") — independent verification
 

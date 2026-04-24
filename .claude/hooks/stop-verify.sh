@@ -58,7 +58,7 @@ $(echo "$OUT" | head -30)
 if [ -n "$CFG_TYPECHECK" ]; then
   run_check "TYPECHECK ($CFG_TYPECHECK)" "$CFG_TYPECHECK"
 elif [ -f "tsconfig.json" ]; then
-  run_check "TSC --noEmit" "npx tsc --noEmit"
+  run_check "TSC --noEmit" "npx --no-install tsc --noEmit"
 fi
 
 # --- Lint ---
@@ -66,7 +66,7 @@ if [ -n "$CFG_LINT" ]; then
   run_check "LINT ($CFG_LINT)" "$CFG_LINT"
 else
   if compgen -G ".eslintrc*" > /dev/null || compgen -G "eslint.config.*" > /dev/null; then
-    run_check "ESLINT" "npx eslint ."
+    run_check "ESLINT" "npx --no-install eslint ."
   fi
   if command -v ruff &>/dev/null && compgen -G "*.py" > /dev/null; then
     run_check "RUFF" "ruff check ."
